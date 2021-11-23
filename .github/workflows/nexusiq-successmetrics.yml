@@ -108,6 +108,11 @@ jobs:
         name: build docker image
         runs-on: ubuntu-latest
         steps:
+        
+        - name: Download the application file
+          uses: actions/download-artifact@v2
+          with:
+            name: successmetrics.jar
 
         - name: list files
           run: ls -lR
