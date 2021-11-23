@@ -5,6 +5,9 @@ on:
   push:
     tags:
       - '*'
+      
+    branches: [ main ]
+    
 env:
   IMAGE_NAME: iqsuccessmetrics2
   RELEASE_BRANCH: master
