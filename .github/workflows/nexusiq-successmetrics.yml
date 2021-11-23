@@ -40,6 +40,12 @@ jobs:
           
         - name: Build with Gradle
           run: ./gradlew clean build
+          
+        - name: Upload the artifact
+          uses: actions/upload-artifact@v2
+          with:
+            name: successmetrics.jar
+            path: build/libs
 
     build_reports2:
         name: build reports2 executable
