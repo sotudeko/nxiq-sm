@@ -6,8 +6,6 @@ on:
     tags:
       - '*'
 
-    branches: [ main ]
-
 env:
   IMAGE_NAME: nexusiq-successmetrics
   RELEASE_BRANCH: main
@@ -116,9 +114,6 @@ jobs:
           with:
             name: successmetrics.jar
 
-        - name: list files
-          run: ls -lR
-        
         - name: Build image
           run: docker build . --file Dockerfile --tag $IMAGE_NAME --label "runnumber=${GITHUB_RUN_ID}"
 
