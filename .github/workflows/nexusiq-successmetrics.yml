@@ -65,7 +65,7 @@ jobs:
         - name: Build with pyinstaller
           run: |
             cd releasefiles/reports2
-            pyinstaller --noupx --onefile --clean --name sm-reports2-${{ runner.os }} sm-reports2.py
+            pyinstaller --noupx --onefile --clean --name reports2-${{ runner.os }} reports2.py
             chmod +x dist/*
 
         - name: Upload the artifact
@@ -86,7 +86,7 @@ jobs:
           uses: actions/download-artifact@v2
 
         - name: Copy reports2 executables
-          run: cp sm-reports2-*/* releasefiles/reports2
+          run: cp reports2-*/* releasefiles/reports2
 
         - name: Build release with Gradle
           run: ./gradlew release
