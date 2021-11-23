@@ -1,5 +1,5 @@
 
-name: Build and Release iq-success-metrics2
+name: Build and Release nexusiq-successmetrics
 
 on:
   push:
@@ -9,7 +9,7 @@ on:
     branches: [ main ]
     
 env:
-  IMAGE_NAME: iqsuccessmetrics2
+  IMAGE_NAME: nexusiq-successmetrics
   RELEASE_BRANCH: master
 
 jobs:
