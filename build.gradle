@@ -13,7 +13,7 @@ group = 'org.sonatype.cs'
 version = '86'
 sourceCompatibility = '8'
 
-def applicationname = 'iq-success-metrics2'
+def applicationname = 'nexusiq-successmetrics'
 def packagedir = "successmetrics-${version}"
 def releasedir = "${packagedir}/${packagedir}"
 
