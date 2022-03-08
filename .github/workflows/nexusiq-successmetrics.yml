@@ -39,7 +39,7 @@ jobs:
           run: chmod +x gradlew
           
         - name: Build with Gradle
-          run: ./gradlew -Pversion=$RELEASE_VERSION clean build release
+          run: ./gradlew -x test -Pversion=$RELEASE_VERSION clean build release
 
         - name: Upload the artifact
           uses: actions/upload-artifact@v2
