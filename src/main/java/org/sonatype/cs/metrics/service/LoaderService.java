@@ -1,361 +1,265 @@
 package org.sonatype.cs.metrics.service;
 
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileReader;
-import java.io.IOException;
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
-import java.text.ParseException;
-import java.util.Map;
-
-import org.apache.http.HttpHeaders;
-import org.apache.http.HttpResponse;
-import org.apache.http.client.ClientProtocolException;
-import org.apache.http.client.HttpClient;
-import org.apache.http.client.methods.HttpGet;
-import org.apache.http.client.methods.HttpPost;
-import org.apache.http.entity.StringEntity;
-import org.apache.http.impl.client.HttpClientBuilder;
-import org.apache.http.util.EntityUtils;
-import org.apache.tomcat.util.codec.binary.Base64;
-import org.json.JSONArray;
-import org.json.JSONException;
-import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.sonatype.cs.metrics.model.PayloadItem;
 import org.sonatype.cs.metrics.util.DataLoaderParams;
-import org.sonatype.cs.metrics.util.HelperService;
 import org.sonatype.cs.metrics.util.SqlStatements;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Paths;
+import java.util.Map;
+
 @Service
 public class LoaderService {
+    private static final Logger log = LoggerFactory.getLogger(LoaderService.class);
 
-	private static final Logger log = LoggerFactory.getLogger(LoaderService.class);
-	
-	@Autowired
-	private DbService dbService;
+    @Autowired private DbService dbService;
 
-	@Autowired
-	private HelperService helperService;
-	
-	@Autowired
-	private FileIoService fileIoService;
-	
-	@Autowired
-	private PeriodsDataService periodsDataService;
+    @Autowired private PeriodsDataService periodsDataService;
 
-	@Value("${data.includelatestperiod}")
-	private boolean includelatestperiod;
+    @Value("${metrics.dir}")
+    private String metricsDir;
 
-	@Value("${data.loadInsightsMetrics}")
-	private boolean loadInsightsMetrics;
-	
-	@Value("${data.dir}")
-	private String dataDir;
+    @Value("${data.includelatestperiod}")
+    private boolean includelatestperiod;
 
-	@Value("${iq.url}")
-	private String iqUrl;
+    @Value("${data.loadInsightsMetrics}")
+    private boolean loadInsightsMetrics;
 
-	@Value("${iq.user}")
-	private String iqUser;
+    @Value("${data.successmetrics}")
+    private String successmetricsFile;
 
-	@Value("${iq.pwd}")
-	private String iqPwd;
+    private boolean successMetricsFileLoaded = false;
+    private boolean applicationEvaluationsFileLoaded = false;
+    private boolean policyViolationsDataLoaded = false;
+    private boolean componentWaiversLoaded = false;
+    private boolean autoreleasedFromQuarantineComponentsLoaded = false;
+    private boolean quarantinedComponentsLoaded = false;
 
-	@Value("${iq.api.payload.timeperiod.first}")
-	private String iqApiFirstTimePeriod;
-	
-	@Value("${iq.api.payload.timeperiod.last}")
-	private String iqApiLastTimePeriod;
-	
-	@Value("${iq.api.payload.application.name}")
-	private String iqApiApplicationName;
-	
-	@Value("${iq.api.payload.organisation.name}")
-	private String iqApiOrganisationName;
+    public boolean loadAllMetrics(String activeProfile) throws IOException {
 
+        successMetricsFileLoaded = loadSuccessMetricsData();
 
-	private String iqSmEndpoint = "api/v2/reports/metrics";
-	
-	public boolean successMetricsFileLoaded = false;
-	public boolean applicationEvaluationsFileLoaded = false;
-	public boolean policyViolationsDataLoaded = false;
-	public boolean componentsQuarantineLoaded = false;
-	public boolean componentWaiversLoaded = false;
-	public boolean autoreleasedFromQuarantineComponentsLoaded = false;
-	public boolean quarantinedComponentsLoaded = false;
+        if (activeProfile.equalsIgnoreCase("web")) {
 
-	public boolean loadMetricsFile(String fileName, String header, String stmt) throws IOException {
-		boolean status = false;
-		
-		String filePath = dataDir + "/" + fileName;
-		log.info("Loading file: " + filePath);
+            setApplicationEvaluationsFileLoaded(
+                    this.loadMetricsFile(
+                            DataLoaderParams.AEDATAFILE,
+                            DataLoaderParams.AEFILEHEADER,
+                            SqlStatements.APPLICATIONEVALUATIONSTABLE));
+            setPolicyViolationsDataLoaded(
+                    this.loadMetricsFile(
+                            DataLoaderParams.PVDATAFILE,
+                            DataLoaderParams.PVFILEHEADER,
+                            SqlStatements.POLICYVIOLATIONSTABLES));
+            setComponentWaiversLoaded(
+                    this.loadMetricsFile(
+                            DataLoaderParams.CWDATAFILE,
+                            DataLoaderParams.CWFILEHEADER,
+                            SqlStatements.COMPONENTWAIVERSTABLE));
+            setQuarantinedComponentsLoaded(
+                    this.loadMetricsFile(
+                            DataLoaderParams.QCDATAFILE,
+                            DataLoaderParams.QCHEADER,
+                            SqlStatements.QUARANTINEDCOMPONENTSTABLE));
+            setAutoreleasedFromQuarantineComponentsLoaded(
+                    this.loadMetricsFile(
+                            DataLoaderParams.AFQCDATAFILE,
+                            DataLoaderParams.AFQCHEADER,
+                            SqlStatements.AUTORELEASEDFROMQUARANTINEDCOMPONENTSTABLE));
+        }
 
-		if (isHeaderValid(filePath, header)){
-			status = loadFile(filePath, stmt);
-		}
+        return successMetricsFileLoaded;
+    }
 
-		return status;
-	}
+    public boolean loadSuccessMetricsData() throws IOException {
 
-	private boolean loadFile(String fileName, String stmt) throws IOException {
-		String sqlStmt = stmt + " ('" + fileName + "')";	
-		
-		dbService.runSqlLoad(sqlStmt);
-		
-		log.info("Loaded file: " + fileName);
-		
-		return true;
-	}
-	
-	private boolean isHeaderValid(String filename, String header) throws IOException {
+        String stmt = SqlStatements.METRICSTABLE;
+        boolean fileLoaded = loadMetricsFile(successmetricsFile, DataLoaderParams.SMHEADER, stmt);
+        boolean doAnalysis = false;
 
-		boolean isValid = false;
+        if (fileLoaded) {
+            Map<String, Object> periods =
+                    periodsDataService.getPeriodData(SqlStatements.METRICTABLENAME);
+            doAnalysis = (boolean) periods.get("doAnalysis");
 
-		String metricsFile = filename;
+            if (doAnalysis) {
+                if (!includelatestperiod) {
+                    String endPeriod = periods.get("endPeriod").toString();
+                    filterOutLatestPeriod(endPeriod); // it is likely incomplete and only where we know multiple periods available
+                    log.info("Removing incomplete data for current month {}", endPeriod);
+                }
 
-		File f = new File(metricsFile);
+                if (loadInsightsMetrics) {
+                    log.info("Loading insights data");
+                    loadInsightsData();
+                }
+            }
+        }
 
-		if (f.exists()){
-				if (!f.isDirectory() && f.length() > 0) {
-					isValid = true;
+        return fileLoaded;
+    }
 
-						if (header.length() > 0){
-							String firstLine = this.getFirstLine(metricsFile);
+    public void filterOutLatestPeriod(String endPeriod) {
+        String sqlStmt = "delete from metric where time_period_start = " + "'" + endPeriod + "'";
+        dbService.runSqlLoad(sqlStmt);
+    }
 
-							if (!firstLine.startsWith(header)) {
-								log.error("Invalid header");
-								log.error("-> " + firstLine);
-								isValid = false;
-							} 
-							else {
-								if (this.countLines(metricsFile) < 2){
-									//log.warn("No metrics data in file");
-									isValid = false;
-								}
-							}
-						}
-				}
-				else {
-					log.info("No data");
-					isValid = false;
-				}
-		}
-		else {
-			log.warn("File not found: " + metricsFile);
-		}
-	
-		return isValid;
-	}
+    public void loadInsightsData() {
+        Map<String, Object> periods =
+                periodsDataService.getPeriodData(SqlStatements.METRICTABLENAME);
 
-	private String getFirstLine(String fileName) throws IOException {
-	    BufferedReader br = new BufferedReader(new FileReader(fileName)); 
+        String midPeriod = periods.get("midPeriod").toString();
 
-	    String line = br.readLine(); 
-	    br.close();
-	    return line;
-	}
+        log.info("Mid period: {}", midPeriod);
 
-	private int countLines(String fileName) throws IOException {
-		BufferedReader br = new BufferedReader(new FileReader(fileName)); 
+        String sqlStmtP1 =
+                "DROP TABLE IF EXISTS METRIC_P1; CREATE TABLE METRIC_P1 AS SELECT * FROM METRIC"
+                        + " WHERE TIME_PERIOD_START <= '"
+                        + midPeriod
+                        + "'";
 
-		String line = br.readLine(); 
-		int lineCount = 0;
+        dbService.runSqlLoad(sqlStmtP1);
 
-		while (line != null){
-			lineCount++;
-			line = br.readLine();
-		}
+        String sqlStmtP2 =
+                "DROP TABLE IF EXISTS METRIC_P2; CREATE TABLE METRIC_P2 AS SELECT * FROM METRIC"
+                        + " WHERE TIME_PERIOD_START > '"
+                        + midPeriod
+                        + "'";
 
-		br.close();
-		return lineCount;
-	}
+        dbService.runSqlLoad(sqlStmtP2);
+    }
 
-	public void filterOutLatestPeriod(String endPeriod) throws ParseException {
-		String sqlStmt = "delete from metric where time_period_start = " + "'" + endPeriod + "'";
-		dbService.runSqlLoad(sqlStmt);
-		return;
-	}
+    public boolean loadMetricsFile(String fileName, String header, String stmt) throws IOException {
+        boolean status = false;
 
-	public boolean loadSuccessMetricsData() throws IOException, ParseException {
+        String filePath =
+                Paths.get(System.getProperty("user.dir"))
+                        .resolve(Paths.get(metricsDir).resolve(fileName))
+                        .toString();
 
-		String stmt = SqlStatements.MetricsTable;
-		boolean fileLoaded = loadMetricsFile(DataLoaderParams.smDatafile, DataLoaderParams.smHeader, stmt);
-		boolean doAnalysis = false;
+        log.info("Loading file: {}", filePath);
 
-		if (fileLoaded) {
-			Map<String, Object> periods = periodsDataService.getPeriodData(SqlStatements.METRICTABLENAME);
-			doAnalysis  = (boolean) periods.get("doAnalysis");
-			
-			if (doAnalysis) {
-				if (!includelatestperiod) {
-					String endPeriod = periods.get("endPeriod").toString();
-					filterOutLatestPeriod(endPeriod); // it is likely incomplete and only where we know multiple periods available
-					log.info("Removing incomplete data for current month " + endPeriod);
-				}
+        if (isHeaderValid(filePath, header)) {
+            status = loadFile(filePath, stmt);
+        }
 
-				if (doAnalysis && loadInsightsMetrics) {
-					log.info("Loading insights data");
-					loadInsightsData();
-				}
-			}
-		}
-		
-		return fileLoaded;
-	}
+        return status;
+    }
 
-	public void loadInsightsData() throws ParseException {
-		Map<String, Object> periods = periodsDataService.getPeriodData(SqlStatements.METRICTABLENAME);
+    private boolean loadFile(String fileName, String stmt) {
+        String sqlStmt = stmt + " ('" + fileName + "')";
 
-		String midPeriod = periods.get("midPeriod").toString();
-		
-		log.info("Mid period: " + midPeriod);
-		
-		String sqlStmtP1 = "DROP TABLE IF EXISTS METRIC_P1; CREATE TABLE METRIC_P1 AS SELECT * FROM METRIC WHERE TIME_PERIOD_START <= '" + midPeriod + "'";
-		dbService.runSqlLoad(sqlStmtP1);
-		
-		String sqlStmtP2 = "DROP TABLE IF EXISTS METRIC_P2; CREATE TABLE METRIC_P2 AS SELECT * FROM METRIC WHERE TIME_PERIOD_START > '" + midPeriod + "'";
-		dbService.runSqlLoad(sqlStmtP2);
-			 
-		return;		
-	}
-	
-	public void createSmDatafile(String iqSmPeriod) throws ClientProtocolException, IOException, JSONException, org.json.simple.parser.ParseException {
-		log.info("Creating successmetrics.csv file");
-		
-		StringEntity apiPayload = getPayload(iqSmPeriod);
-				
-		String metricsUrl = iqUrl + "/" + iqSmEndpoint;
-    	HttpPost request = new HttpPost(metricsUrl);
+        dbService.runSqlLoad(sqlStmt);
 
-		String auth = iqUser + ":" + iqPwd;
-		byte[] encodedAuth = Base64.encodeBase64(auth.getBytes(StandardCharsets.ISO_8859_1));
-		String authHeader = "Basic " + new String(encodedAuth);
-		
-		request.setHeader(HttpHeaders.AUTHORIZATION, authHeader);
-		request.addHeader("Accept", "text/csv");
-		request.addHeader("Content-Type", "application/json");
-        request.setEntity(apiPayload);
+        log.info("Loaded file: {}", fileName);
 
-		HttpClient client = HttpClientBuilder.create().build();
-		HttpResponse response = client.execute(request);
+        return true;
+    }
 
-		int statusCode = response.getStatusLine().getStatusCode();
-		
-		if (statusCode != 200) {
-			throw new RuntimeException("Failed with HTTP error code : " + statusCode);
-	    }
-	        
-	    log.info("Created successmetrics.csv file");
-	    
-	    InputStream content = response.getEntity().getContent();
-	    fileIoService.writeSuccessMetricsFile(content);
-	    
-	    return;
-	}
+    public boolean isQuarantinedComponentsLoaded() {
+        return quarantinedComponentsLoaded;
+    }
 
-	private StringEntity getPayload(String iqSmPeriod) throws IOException, JSONException, org.json.simple.parser.ParseException {
-		log.info("Making api payload");
+    public void setQuarantinedComponentsLoaded(boolean quarantinedComponentsLoaded) {
+        this.quarantinedComponentsLoaded = quarantinedComponentsLoaded;
+    }
 
-		PayloadItem firstTimePeriod = new PayloadItem(iqApiFirstTimePeriod, false);
-		PayloadItem lastTimePeriod = new PayloadItem(iqApiLastTimePeriod, false);
-		PayloadItem organisationName = new PayloadItem(iqApiOrganisationName, false);
-		PayloadItem applicationName = new PayloadItem(iqApiApplicationName, false);
+    public boolean isAutoreleasedFromQuarantineComponentsLoaded() {
+        return autoreleasedFromQuarantineComponentsLoaded;
+    }
 
-		if (!firstTimePeriod.isExists()) {
-			throw new RuntimeException("No start period specified (iq.api.payload.timeperiod.first)");
-		}
+    public void setAutoreleasedFromQuarantineComponentsLoaded(
+            boolean autoreleasedFromQuarantineComponentsLoaded) {
+        this.autoreleasedFromQuarantineComponentsLoaded =
+                autoreleasedFromQuarantineComponentsLoaded;
+    }
 
-		JSONObject ajson = new JSONObject();
-		ajson.put("timePeriod", iqSmPeriod.toUpperCase());
-		ajson.put("firstTimePeriod", firstTimePeriod.getItem());
-		
-		if (lastTimePeriod.isExists()) {
-			ajson.put("lastTimePeriod", lastTimePeriod.getItem());
-		}
-		
-		// organisation takes precedence
-		if (organisationName.isExists()){
-			ajson.put("organizationIds", getId("organizations", organisationName.getItem()));
-		}
-		else if (applicationName.isExists()) {
-			ajson.put("applicationIds", getId("applications", applicationName.getItem()));
-		}
-		
-		log.info("Api Payload: " + ajson.toString());
+    public boolean isComponentWaiversLoaded() {
+        return componentWaiversLoaded;
+    }
 
-		StringEntity params = new StringEntity(ajson.toString());
+    public void setComponentWaiversLoaded(boolean componentWaiversLoaded) {
+        this.componentWaiversLoaded = componentWaiversLoaded;
+    }
 
-		return params;
-	}
-	
-	private String[] getId(String endpoint, String aoName) throws ClientProtocolException, IOException, org.json.simple.parser.ParseException {
-		String[] s = new String[1];
+    public boolean isPolicyViolationsDataLoaded() {
+        return policyViolationsDataLoaded;
+    }
 
-		String apiEndpoint = "/api/v2/" + endpoint;
-		
-		String content = getIqData(apiEndpoint);
-		
-		JSONObject jsonObject = new JSONObject(content);
-	    
-	    JSONArray jsonArray = jsonObject.getJSONArray(endpoint);
-	    
-	    for (int i = 0; i < jsonArray.length(); i++) {
-	        JSONObject jObject = jsonArray.getJSONObject(i);
-	        
-	        String oName = jObject.getString("name");
-	        String oId = jObject.getString("id");
-	        
-	        if (oName.equals(aoName)) {
-	        	StringBuffer ep = new StringBuffer(endpoint);
-	        	log.info("Reporting for " + ep.deleteCharAt(ep.length()-1) + ": " + aoName + " [" + oId + "]");
-	        	s[0] =  oId;
-	        	break;
-	        }
-	    }
+    public void setPolicyViolationsDataLoaded(boolean policyViolationsDataLoaded) {
+        this.policyViolationsDataLoaded = policyViolationsDataLoaded;
+    }
 
-		return s;
-	}
-	
-	private String getIqData(String endpoint) throws ClientProtocolException, IOException {
-						
-		String url = iqUrl + "/" + endpoint;
-    	HttpGet request = new HttpGet(url);
+    public boolean isApplicationEvaluationsFileLoaded() {
+        return applicationEvaluationsFileLoaded;
+    }
 
-		String auth = iqUser + ":" + iqPwd;
-		byte[] encodedAuth = Base64.encodeBase64(auth.getBytes(StandardCharsets.ISO_8859_1));
-		String authHeader = "Basic " + new String(encodedAuth);
-		
-		request.setHeader(HttpHeaders.AUTHORIZATION, authHeader);
-		request.addHeader("Content-Type", "application/json");
+    public void setApplicationEvaluationsFileLoaded(boolean applicationEvaluationsFileLoaded) {
+        this.applicationEvaluationsFileLoaded = applicationEvaluationsFileLoaded;
+    }
 
-		HttpClient client = HttpClientBuilder.create().build();
-		HttpResponse response = client.execute(request);
+    public static boolean isHeaderValid(String filename, String header) throws IOException {
+        String metricsFile = filename;
+        File f = new File(metricsFile);
 
-		int statusCode = response.getStatusLine().getStatusCode();
-		
-		if (statusCode != 200) {
-			throw new RuntimeException("Failed with HTTP error code : " + statusCode);
-	    }
-	        	    
-	    String jsonString = EntityUtils.toString(response.getEntity());   
-	    return jsonString;
-	}
-	
-	public void loadReports2() throws IOException {
-		
-		applicationEvaluationsFileLoaded = this.loadMetricsFile(DataLoaderParams.aeDatafile, DataLoaderParams.aeFileHeader, SqlStatements.ApplicationEvaluationsTable);
-		policyViolationsDataLoaded = this.loadMetricsFile(DataLoaderParams.pvDatafile, DataLoaderParams.pvFileHeader,  SqlStatements.PolicyViolationsTables);
-		//componentsQuarantineLoaded = this.loadMetricsFile(DataLoaderParams.cqDatafile, DataLoaderParams.cqFileHeader, SqlStatements.ComponentsInQuarantineTable);
-		componentWaiversLoaded = this.loadMetricsFile(DataLoaderParams.cwDatafile, DataLoaderParams.cwFileHeader, SqlStatements.ComponentWaiversTable);
-        quarantinedComponentsLoaded = this.loadMetricsFile(DataLoaderParams.qcompDatafile, DataLoaderParams.qcompHeader, SqlStatements.QuarantinedComponentsTable);
-		autoreleasedFromQuarantineComponentsLoaded = this.loadMetricsFile(DataLoaderParams.afqcomponentDatafile, DataLoaderParams.afqcomponentHeader, SqlStatements.AutoreleasedFromQuarantinedComponentsTable);
-		
-	}
-	
+        if (!f.exists()) {
+            log.warn("File not found: {}", metricsFile);
+            return false;
+        }
+        if (f.isDirectory() || f.length() <= 0) {
+            log.info("No data");
+            return false;
+        }
+        if (header.length() == 0) {
+            return true;
+        }
+
+        String firstLine = getFirstLine(metricsFile);
+        if (!firstLine.startsWith(header)) {
+            log.error("Invalid header");
+            log.error("-> {}", firstLine);
+            return false;
+        }
+
+        if (countLines(metricsFile) == 1){
+            log.warn("No metrics found for: {}", metricsFile);
+        }
+
+        return countLines(metricsFile) >= 2;
+    }
+
+    public static String getFirstLine(String fileName) throws IOException {
+        try (BufferedReader br =
+                new BufferedReader(
+                        new InputStreamReader(
+                                new FileInputStream(fileName), StandardCharsets.ISO_8859_1))) {
+            return br.readLine();
+        }
+    }
+
+    public static int countLines(String fileName) throws IOException {
+        try (BufferedReader br =
+                new BufferedReader(
+                        new InputStreamReader(
+                                new FileInputStream(fileName), StandardCharsets.ISO_8859_1))) {
+            String line = br.readLine();
+            int lineCount = 0;
+
+            while (line != null) {
+                lineCount++;
+                line = br.readLine();
+            }
+
+            return lineCount;
+        }
+    }
 }

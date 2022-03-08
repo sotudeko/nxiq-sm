@@ -6,16 +6,14 @@ import javax.persistence.GenerationType;
 import javax.persistence.Id;
 
 @Entity
+@SuppressWarnings("unused")
 public class ApplicationEvaluation {
-    
+
     @Id
     @GeneratedValue(strategy = GenerationType.AUTO)
-
     private Long id;
 
     private String evaluationDate;
-	private String applicationName;
+    private String applicationName;
     private String stage;
-    
-    
 }

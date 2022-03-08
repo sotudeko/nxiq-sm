@@ -1,10 +1,5 @@
 package org.sonatype.cs.metrics.controller;
 
-import java.io.IOException;
-import java.util.List;
-
-import com.opencsv.exceptions.CsvException;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.sonatype.cs.metrics.model.DbRowStr;
@@ -19,63 +14,71 @@ import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
 
+import java.io.IOException;
+import java.nio.file.Paths;
+import java.util.List;
+
 @Controller
 public class FirewallController {
     private static final Logger log = LoggerFactory.getLogger(FirewallController.class);
 
-    @Autowired
-    private DbService dbService;
+    @Autowired private DbService dbService;
 
-    @Autowired
-    private FileIoService fileIoService;
+    @Autowired private LoaderService loaderService;
 
-    @Autowired
-    private LoaderService loaderService;
-    
-    @Value("${data.dir}")
-	private String dataDir;
+    @Value("${metrics.dir}")
+    private String metricsDir;
 
-
-    @GetMapping({"/firewall"})
-	public String firewall(Model model) throws IOException {
+    @GetMapping({"/firewall", "/firewall.html"})
+    public String firewall(Model model) throws IOException {
         log.info("In FirewallController");
 
         /* Firewall list reports (loaded at startup) */
-        if (loaderService.quarantinedComponentsLoaded) {
-        	List<DbRowStr> quarantinedComponents =  dbService.runSqlStr(SqlStatements.QuarantinedComponents);
+        if (loaderService.isQuarantinedComponentsLoaded()) {
+            List<DbRowStr> quarantinedComponents =
+                    dbService.runSqlStr(SqlStatements.QUARANTINEDCOMPONENTS);
             model.addAttribute("quarantinedComponents", quarantinedComponents);
-            
-            if (quarantinedComponents.size() > 0) {
-		        model.addAttribute("quarantinedComponentsData", true);
-	        }
-	        else {
-		        model.addAttribute("quarantinedComponentsData", false);
-	        }
-        }
-        
-        if (loaderService.autoreleasedFromQuarantineComponentsLoaded) {
-	        List<DbRowStr> autoReleasedFromQuarantinedComponents =  dbService.runSqlStr(SqlStatements.AutoReleasedFromQuarantinedComponents);
-	        model.addAttribute("autoReleasedFromQuarantinedComponents", autoReleasedFromQuarantinedComponents);
-	        
-	        if (autoReleasedFromQuarantinedComponents.size() > 0) {
-		        model.addAttribute("autoReleasedFromQuarantinedComponentsData", true);
-	        }
-	        else {
-		        model.addAttribute("autoReleasedFromQuarantinedComponentsData", false);
-	        }
+            model.addAttribute("quarantinedComponentsData", !quarantinedComponents.isEmpty());
         }
 
-        /* Firewall summary reports (read the file in here directly) */
-        List<String> quarantinedComponentsSummary = fileIoService.readFWCsvFile(dataDir + "/" + DataLoaderParams.qcsDatafile);
-        List<String> autoReleasedFromQuarantinedComponentsSummary = fileIoService.readFWCsvFile(dataDir + "/" + DataLoaderParams.afqsDatafile);
-     
+        if (loaderService.isAutoreleasedFromQuarantineComponentsLoaded()) {
+            List<DbRowStr> autoReleasedFromQuarantinedComponents =
+                    dbService.runSqlStr(SqlStatements.AUTORELEASEDFROMQUARANTINEDCOMPONENTS);
+            model.addAttribute(
+                    "autoReleasedFromQuarantinedComponents", autoReleasedFromQuarantinedComponents);
+
+            model.addAttribute(
+                    "autoReleasedFromQuarantinedComponentsData",
+                    !autoReleasedFromQuarantinedComponents.isEmpty());
+        }
+
+        /* Firewall summary reports (read the files in here directly) */
+        List<String> quarantinedComponentsSummary = loadFile(DataLoaderParams.QCSDATAFILE);
+        List<String> autoReleasedFromQuarantinedComponentsSummary = loadFile(DataLoaderParams.AFQCSDATAFILE);
+
         String[] qcs = quarantinedComponentsSummary.get(1).split(",");
         String[] afqc = autoReleasedFromQuarantinedComponentsSummary.get(1).split(",");
-        
+
         model.addAttribute("quarantinedComponentsSummary", qcs);
         model.addAttribute("autoReleasedFromQuarantinedComponentsSummary", afqc);
-        
 
         return "firewall";
+    }
+
+    private List<String> loadFile(String filename) throws IOException {
+
+        String filepath =
+                Paths.get(System.getProperty("user.dir"))
+                        .resolve(Paths.get(metricsDir).resolve(filename))
+                        .toString();
+
+        log.info("Loading file: {}", filepath);
+
+        List<String> summary =
+                FileIoService.fileToStringList(filepath);
+
+        log.info("Loaded file: {}", filepath);
+
+        return summary;
     }
 }

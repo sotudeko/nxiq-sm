@@ -1,88 +1,74 @@
 package org.sonatype.cs.metrics.util;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-
 import org.sonatype.cs.metrics.model.DbRow;
 import org.sonatype.cs.metrics.model.DbRowStr;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
+import java.util.IntSummaryStatistics;
+import java.util.List;
+import java.util.Map;
+
 @Service
 public class HelperService {
 
-	public int[] getPointsSumAndAverage(List<DbRow> dataList) {
+    private HelperService() {}
 
-		int countLabels = 0;
-		int sumData = 0;
+    public static int[] getPointsSumAndAverage(List<DbRow> dataList) {
+        IntSummaryStatistics dataListStatistics =
+                dataList.stream()
+                        .map(DbRow::getPointA)
+                        .filter(n -> (n != 0))
+                        .mapToInt(n -> n)
+                        .summaryStatistics();
+        return new int[] {(int) dataListStatistics.getSum(), (int) dataListStatistics.getAverage()};
+    }
 
-		for (DbRow dp : dataList) {
-			int count = (int) dp.getPointA();
+    public static Float getPointsAverage(List<Float> points) {
+        return (float)
+                points.stream()
+                        .filter(f -> (f != 0))
+                        .mapToDouble(d -> d)
+                        .summaryStatistics()
+                        .getAverage();
+    }
 
-			if (count > 0) {
-				sumData += count;
-				countLabels++;
-			}
-		}
+    public static Map<String, Object> dataMap(String key, List<DbRowStr> data) {
 
-		int avg = sumData / countLabels;
+        Map<String, Object> map = new HashMap<>();
 
-		int[] values = new int[] { sumData, avg };
-		return values;
-	}
-	
-	
-	public Object getPointsAverage(List<Float> points) {
-		int countPoints = 0;
+        if (data.isEmpty()) {
+            map.put(key + "Number", 0);
+            map.put(key, false);
+        } else {
+            map.put(key + "Data", data);
+            map.put(key + "Number", data.size());
+            map.put(key, true);
+        }
 
-		float sumData = 0;
+        return map;
+    }
 
-		for (float dp : points) {
+    public static String calculateDivision(float a, float b) {
+        String result;
 
-			if (dp > 0) {
-				sumData += dp;
-				countPoints++;
-			}
-		}
+        if (a > 0 && b > 0) {
+            double increase = (double) a / b;
+            result = String.format("%.2f", increase);
+        } else {
+            result = "0";
+        }
 
-		float a = sumData / countPoints;
-		
-		if (Float.isNaN(a)) {
-			a = 0;
-		}
-		
-		return a;
-	}
-	
-	public Map<String, Object> dataMap(String key, List<DbRowStr> data) {
-		
-		Map<String, Object> map = new HashMap<>();
-		
-		if (data.size() > 0){
-			map.put(key + "Data", data);
-			map.put(key + "Number", data.size());
-			map.put(key, true);
-		}
-		else {
-			map.put(key + "Number", 0);
-			map.put(key, false);
-		}
-		
-		return map;
-	}
-	
-	public String calculateDivision(float a, float b){
-	    String result;
+        return result;
+    }
 
-	    if (a > 0 && b > 0){
-	      double increase = (double) a / b;
-	      result = String.format("%.2f", increase); 
-	    }
-	    else {
-	      result = "0";
-	    }
-	    
-	    return result;
-
-	}
+    public static Long convertDateStr(String str) {
+        str += " 00:00";
+        LocalDateTime localDate =
+                LocalDateTime.parse(str, DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"));
+        return localDate.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+    }
 }
