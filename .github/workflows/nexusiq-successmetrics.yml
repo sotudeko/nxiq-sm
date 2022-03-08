@@ -41,11 +41,11 @@ jobs:
         - name: Build with Gradle
           run: ./gradlew -x test -Pversion=$RELEASE_VERSION clean build release
 
-        - name: Upload the artifact
-          uses: actions/upload-artifact@v2
-          with:
-            name: successmetrics.jar
-            path: build/libs
+#        - name: Upload the artifact
+#          uses: actions/upload-artifact@v2
+#          with:
+#            name: successmetrics.jar
+#            path: build/libs
 
 #        - name: Create release
 #          uses: softprops/action-gh-release@v1
