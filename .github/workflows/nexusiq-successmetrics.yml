@@ -47,11 +47,11 @@ jobs:
             name: successmetrics.jar
             path: build/libs
 
-        - name: Create release
-          uses: softprops/action-gh-release@v1
-          if: startsWith(github.ref, 'refs/tags/')
-          with:
-            files: successmetrics-*.zip
+#        - name: Create release
+#          uses: softprops/action-gh-release@v1
+#          if: startsWith(github.ref, 'refs/tags/')
+#          with:
+#            files: successmetrics-*.zip
 
         #create bundle
 
@@ -66,8 +66,21 @@ jobs:
             target: "staging/mgen-83.zip"
             token: "${{ secrets.GITHUB_TOKEN }}"
 
+        - name: release files
+          run: |
+            cd staging
+            mkdir releasefiles
+            unzip mgen-* -d releasefiles
+            unzip successmetrics-* -d releasefiles
+
         - name: list directory content
           run: ls -lR
+
+        - name: Create release
+          uses: softprops/action-gh-release@v1
+          if: startsWith(github.ref, 'refs/tags/')
+          with:
+            files: staging/releasefiles/*
 
         #finish create bundle
 
