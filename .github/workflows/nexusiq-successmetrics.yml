@@ -53,7 +53,7 @@ jobs:
           with:
             files: successmetrics-*.zip
 
-          #create bundle
+        #create bundle
 
         - name: create bundle directory
           run: mkdir staging && cp successmetrics-*.zip staging
@@ -69,6 +69,8 @@ jobs:
 
         - name: list directory content
           run: ls -lR
+
+        #finish create bundle
 
     build_docker_image:
         needs: create_release
