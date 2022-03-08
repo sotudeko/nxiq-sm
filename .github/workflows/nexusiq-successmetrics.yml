@@ -53,14 +53,10 @@ jobs:
           with:
             files: successmetrics-*.zip
 
-    metrics_bundle:
-      needs: create_release
-      name: Upload artifact to staging area
-      runs-on: ubuntu-latest
-      steps:
+          #create bundle
 
         - name: create bundle directory
-          run: mkdir staging
+          run: mkdir staging && cp successmetrics-*.zip staging
 
         - name: fetch getmetrics release
           uses: dsaltares/fetch-gh-release-asset@master
@@ -70,6 +66,9 @@ jobs:
             file: "mgen-83.zip"
             target: "staging/mgen-83.zip"
             token: "${{ secrets.GITHUB_TOKEN }}"
+
+        - name: list directory content
+          run: ls -lR
 
     build_docker_image:
         needs: create_release
