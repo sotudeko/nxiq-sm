@@ -54,7 +54,7 @@ jobs:
 #            files: successmetrics-*.zip
 
         #create release bundle
-        -
+        
         - name: create staging directory
           run: |
             mkdir staging
