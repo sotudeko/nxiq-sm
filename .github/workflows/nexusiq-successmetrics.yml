@@ -56,22 +56,26 @@ jobs:
         #create release bundle
 
         - name: create bundle directory
-          run: mkdir staging && cp successmetrics-*.zip staging
+          run: |
+            mkdir bundle
+            cp successmetrics-*.zip bundle
 
         - name: fetch getmetrics release
           uses: dsaltares/fetch-gh-release-asset@master
           with:
             repo: "sotudeko/mgen"
             file: "mgen-83.zip"
-            target: "staging/mgen-83.zip"
+            target: "bundle/mgen-83.zip"
             token: "${{ secrets.GITHUB_TOKEN }}"
 
         - name: release files
           run: |
-            cd staging
+            cd bundle
             mkdir releasefiles
             unzip mgen-* -d releasefiles
             unzip successmetrics-* -d releasefiles
+            cd releasefiles
+            zip -o successmetrics-${RELEASE_VERSION}.zip -r mgen-* successmetrics-*
 
         - name: list directory content
           run: ls -lR
@@ -80,13 +84,14 @@ jobs:
           uses: actions/upload-artifact@v2
           with:
             name: successmetrics.jar
-            path: staging/releasefiles/*
+            path: staging/releasefiles
 
         - name: Create release
           uses: softprops/action-gh-release@v1
           if: startsWith(github.ref, 'refs/tags/')
           with:
-            files: successmetrics-*.zip
+            files: |
+              staging/releasefiles
 
         #finish create release bundle
 
