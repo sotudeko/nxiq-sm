@@ -41,11 +41,11 @@ jobs:
         - name: Build with Gradle
           run: ./gradlew -x test -Pversion=$RELEASE_VERSION clean build release
 
-#        - name: Upload the artifact
-#          uses: actions/upload-artifact@v2
-#          with:
-#            name: successmetrics.jar
-#            path: build/libs
+        - name: Upload the artifact
+          uses: actions/upload-artifact@v2
+          with:
+            name: successmetrics.jar
+            path: build/libs
 
 #        - name: Create release
 #          uses: softprops/action-gh-release@v1
@@ -54,44 +54,37 @@ jobs:
 #            files: successmetrics-*.zip
 
         #create release bundle
-
-        - name: create bundle directory
+        -
+        - name: create staging directory
           run: |
-            mkdir bundle
-            cp successmetrics-*.zip bundle
+            mkdir staging
+            cp successmetrics-*.zip staging
 
-        - name: fetch getmetrics release
+        - name: fetch getmetrics release file
           uses: dsaltares/fetch-gh-release-asset@master
           with:
             repo: "sotudeko/mgen"
             file: "mgen-83.zip"
-            target: "bundle/mgen-83.zip"
+            target: "staging/mgen-83.zip"
             token: "${{ secrets.GITHUB_TOKEN }}"
 
         - name: release files
           run: |
-            cd bundle
-            mkdir releasefiles
-            unzip mgen-* -d releasefiles
-            unzip successmetrics-* -d releasefiles
-            cd releasefiles
+            cd staging
+            mkdir release_files
+            unzip mgen-* -d release_files
+            unzip successmetrics-* -d release_files
+            cd release_files
             zip -o successmetrics-${RELEASE_VERSION}.zip -r mgen-* successmetrics-*
 
         - name: list directory content
           run: ls -lR
 
-        - name: Upload the artifacts
-          uses: actions/upload-artifact@v2
-          with:
-            name: successmetrics.jar
-            path: staging/releasefiles
-
         - name: Create release
           uses: softprops/action-gh-release@v1
           if: startsWith(github.ref, 'refs/tags/')
           with:
-            files: |
-              staging/releasefiles
+            files: staging/release_files/successmetrics-*.zip
 
         #finish create release bundle
 
